@@ -10,7 +10,7 @@ private:
   T *    _curPos;
   T *    _end;
   size_t _bufferSize;
-  std::shared_ptr<FixedAllocator> _next;
+  std::shared_ptr<FixedAllocator<T, BufferSize>> _next;
 
   void reallocate()
   {
