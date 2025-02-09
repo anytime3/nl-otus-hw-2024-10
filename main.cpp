@@ -1,9 +1,4 @@
-#include <iostream>
-#include <string>
-#include <vector>
-#include <list>
-#include <tuple>
-
+#include "PrintIp.cpp"
 
 
 int main()
