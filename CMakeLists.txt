@@ -3,6 +3,8 @@ set(PATCH_VERSION "1" CACHE INTERNAL "Patch version")
 set(PROJECT_VESRION 0.0.${PATCH_VERSION})
 project(print_ip VERSION ${PROJECT_VESRION})
 
+
+
 set(CMAKE_CXX_STANDARD 17)
 
 add_executable(print_ip
@@ -10,6 +12,7 @@ add_executable(print_ip
         PrintIp.cpp
         Traits.cpp
         )
+
 
 install(TARGETS print_ip RUNTIME DESTINATION bin)
 set(CPACK_GENERATOR DEB)
