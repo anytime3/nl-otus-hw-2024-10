@@ -3,7 +3,7 @@ name: 'print_ip'
 on:
   push:
     branches:
-      - 3-sfinae
+      - 4-sfinae
       - feature/github_actions
 
 jobs:
