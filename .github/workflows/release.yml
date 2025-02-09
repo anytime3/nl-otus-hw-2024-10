@@ -1,9 +1,9 @@
-name: 'C++ CI'
+name: 'Allocators'
 
 on:
   push:
     branches:
-      - 2-ip-filter
+      - 3-allocators
       - feature/github_actions
 
 jobs:
@@ -34,6 +34,6 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./ip_filter-0.0.${{ github.run_number }}-Linux.deb
-          asset_name: ip_filter-0.0.${{ github.run_number }}-Linux.deb
+          asset_path: ./allocators-0.0.${{ github.run_number }}-Linux.deb
+          asset_name: allocators-0.0.${{ github.run_number }}-Linux.deb
           asset_content_type: application/vnd.debian.binary-package
