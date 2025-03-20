@@ -1,6 +1,6 @@
 #include <iostream>
 #include "Traits.cpp"
-
+//------------------------------------------------------------------------
 
 template<typename T, typename Fake = std::enable_if_t<std::is_integral_v<T>>>
 void print_ip(T value, [[maybe_unused]] std::integral_constant<int, 0> fake = {})
@@ -12,13 +12,14 @@ void print_ip(T value, [[maybe_unused]] std::integral_constant<int, 0> fake = {}
   std::cout << std::endl;
 }
 
-
+//------------------------------------------------------------------------
 template<typename T, typename Fake = std::enable_if_t<std::is_same_v<T, std::string>>>
 void print_ip(const T & value, [[maybe_unused]] std::integral_constant<int, 1> fake = {})
 {
   std::cout << value << std::endl;
 }
 
+//------------------------------------------------------------------------
 template<typename T, typename Fake = std::enable_if_t<is_iterable_v<T> && std::is_same_v<T, std::string> == false>>
 void print_ip(const T & value, [[maybe_unused]] std::integral_constant<int, 2> fake = {})
 {
@@ -32,7 +33,7 @@ void print_ip(const T & value, [[maybe_unused]] std::integral_constant<int, 2> f
   std::cout << std::endl;
 }
 
-
+//------------------------------------------------------------------------
 template<size_t index, size_t size, typename T>
 void tuple_print(const T& t)
 {
@@ -44,6 +45,7 @@ void tuple_print(const T& t)
     }
 }
 
+//------------------------------------------------------------------------
 template <typename ...Args, typename Fake = std::enable_if_t< is_tuple_v<std::tuple<Args...>>>>
 void print_ip(const std::tuple<Args...> & value,[[maybe_unused]] std::integral_constant<int, 3> fake = {})
 {
@@ -51,3 +53,5 @@ void print_ip(const std::tuple<Args...> & value,[[maybe_unused]] std::integral_c
   tuple_print<0, size, std::tuple<Args...>>(value);
   std::cout << std::endl;
 }
+
+//------------------------------------------------------------------------
