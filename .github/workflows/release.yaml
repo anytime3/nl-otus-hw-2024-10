@@ -27,11 +27,14 @@ jobs:
 
       # Deploy the HTML documentation to GitHub Pages
       - name: GH Pages Deployment
-        uses: DenverCoder1/doxygen-github-pages-action@v1
+        uses: peaceiris/actions-gh-pages@v3
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          branch: gh-pages
-          folder: docs/html
+          publish_dir: ./doc/html/
+          enable_jekyll: false
+          allow_empty_commit: false
+          force_orphan: true
+          publish_branch: gh-pages
 
       - name: Create Release
         id: create_release
