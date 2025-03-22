@@ -54,7 +54,7 @@ PROJECT_NUMBER         = 2.0
 # for a project that appears at the top of each page and should give viewers a
 # quick idea about the purpose of the project. Keep the description short.
 
-PROJECT_BRIEF          = "brief"
+PROJECT_BRIEF          =
 
 # With the PROJECT_LOGO tag one can specify a logo or an icon that is included
 # in the documentation. The maximum height of the logo should not exceed 55
@@ -978,7 +978,6 @@ WARN_LINE_FORMAT       = "at line $line of file $file"
 # warning and error messages are written to standard error. When as file - is
 # specified the warning and error messages are written to standard output
 # (stdout).
-
 
 WARN_LOGFILE           =
 
