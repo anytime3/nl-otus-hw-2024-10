@@ -4,7 +4,6 @@
 #include "libs/View.h"
 #include "libs/Primitive.h"
 
-
 int main() {
   std::shared_ptr<Document> document = std::make_shared<Document>();
   std::shared_ptr<View> view = std::make_shared<View>(document);
