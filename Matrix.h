@@ -4,6 +4,7 @@
 #include <unordered_map>
 #include <tuple>
 #include <iostream>
+#include <memory>
 //-----------------------------------------------------------------------------
 template<typename T, T defaultValue>
 class IMatrix
