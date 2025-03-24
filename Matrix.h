@@ -1,10 +1,10 @@
 #ifndef MATRIX_H
 #define MATRIX_H
-
+//-----------------------------------------------------------------------------
 #include <unordered_map>
 #include <tuple>
 #include <iostream>
-
+//-----------------------------------------------------------------------------
 template<typename T, T defaultValue>
 class IMatrix
 {
@@ -95,8 +95,7 @@ public:
   virtual Iterator begin() const = 0;
   virtual Iterator end() const = 0;
 };
-
-
+//-----------------------------------------------------------------------------
 template<typename T, T defaultValue>
 class Matrix : public IMatrix<T, defaultValue>
 {
@@ -137,7 +136,7 @@ public:
   Iterator end() const override { return Iterator(this->_data.end(), this->_data.end()); }
 
 };
-
+//-----------------------------------------------------------------------------
 template<typename T, T defaultValue>
 class MatrixProxy : public IMatrix<T, defaultValue>
 {
@@ -157,5 +156,5 @@ public:
 
   Iterator end() const override { return _matrix->end(); }
 };
-
+//-----------------------------------------------------------------------------
 #endif // MATRIX_H
