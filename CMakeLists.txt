@@ -16,8 +16,6 @@ target_link_libraries(bayan
         Boost::program_options
 )
 
-install(TARGETS bayan DESTINATION bin)
-
 install(TARGETS bayan RUNTIME DESTINATION bin)
 set(CPACK_GENERATOR DEB)
 set(CPACK_PACKAGE_VERSION_MAJOR "${PROJECT_VERSION_MAJOR}")
