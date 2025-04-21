@@ -86,10 +86,9 @@ void Server::onAccept(bs::error_code ec, shared_ptr<ba::ip::tcp::socket> socket)
 		return;
 	}
 
-	//cout << "connection from " << socket->remote_endpoint().address() << ":" << socket->remote_endpoint().port() << endl; // TODO remove
 
 	auto ep = socket->remote_endpoint();
-	auto clientData = m_clientDataFactory->createClientData(socket); // тут важно сохранить куданть клиентский сокет, а то разорвёт соединение сразу
+    auto clientData = m_clientDataFactory->createClientData(socket);
 	m_clients.try_emplace(clientData->clientId, std::move(clientData));
 
 	startRecv(socket);
