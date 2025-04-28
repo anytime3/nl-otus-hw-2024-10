@@ -1,130 +1,202 @@
 #include "DbMng.h"
-#include <exception>
 //------------------------------------------------------------------------------
-DbMng::DbMng(const std::string & user, const std::string & password) :
+DbMng::DbMng(const std::string & user, const std::string & password, loggerPtr & log) :
   _user(user),
-  _password(password)
+  _password(password),
+  _log(log)
 {
 
 }
 //------------------------------------------------------------------------------
-bool DbMng::isDatabaseExists(const std::string & dbName) const
+bool DbMng::isDatabaseExist(const std::string & dbName) const
 {
-  PGconn *conn = nullptr;
-  std::string conninfo = "host=127.0.0.1 user=" + _user + "password=" + _password;
-  conn = PQconnectdb(conninfo.c_str());
-
-  std::string query = "SELECT 1 FROM pg_database WHERE datname = '" + dbName + "'";
-  PGresult* res = PQexec(conn, query.c_str());
-
-  bool exists = (PQntuples(res) > 0);
-  PQclear(res);
-  PQfinish(conn);
-  return exists;
-}
-//------------------------------------------------------------------------------
-void DbMng::createDb(const std::string & dbName) const
-{
-  std::string conninfo = "host=127.0.0.1 user=" + _user + "password=" + _password;
-  PGconn* conn = PQconnectdb(conninfo.c_str());
-
-  if (PQstatus(conn) != CONNECTION_OK) {
-    PQfinish(conn);
-    throw std::runtime_error("Can not connect to DB");
-  }
-
-  std::string query = "CREATE DATABASE \"" + dbName + "\"";
-  query += " WITH TEMPLATE = template1";
-  query += " ENCODING = 'UTF8'";
-  query += " OWNER = postgres";
-
-  PGresult* res = PQexec(conn, query.c_str());
-
-  bool success = true;
-  if (PQresultStatus(res) != PGRES_COMMAND_OK) {
-      std::cout << "Can not create DB " << dbName << std::endl;
-      success = false;
-  }
-
-  PQclear(res);
-  PQfinish(conn);
-}
-//------------------------------------------------------------------------------
-bool DbMng::isTableExists(const std::string & dbName, const std::string & tableName) const
-{
-  PGconn *conn = nullptr;
-  std::string schemaName = "public";
-  std::string conninfo = "host=127.0.0.1 user=" + _user + "password=" + _password + " dbname=" + dbName;
-  conn = PQconnectdb(conninfo.c_str());
-  if(PQstatus(conn) != CONNECTION_OK)
+  try
   {
-    PQfinish(conn);
-    throw std::runtime_error("Can not connect to DB");
+    std::string connStr = "host=127.0.0.1 port=5432 user=" + _user + " password=" + _password;
+    pqxx::connection conn(connStr);
+
+    if (conn.is_open() == false)
+    {
+      _log->error("Can not open connection to Postgres");
+      return false;
+    }
+
+    pqxx::nontransaction txn(conn);
+    std::string execStr = "SELECT * FROM pg_database WHERE datname = " + txn.quote(dbName);
+    pqxx::result res = txn.exec(execStr);
+    conn.close();
+
+    return !res.empty();
+  } catch (const std::exception & err)
+  {
+    _log->error(SPDLOG_FMT_STRING("Exception in isDatabaseExist! {} "), err.what());
+    return false;
   }
-
-   std::string query = "SELECT 1 FROM information_schema.tables "
-                      "WHERE table_schema = 'public' AND table_name =" + tableName;
-
-   PGresult* res = PQexec(conn, query.c_str());
-
-   if (PQresultStatus(res) != PGRES_TUPLES_OK)
-   {
-     PQclear(res);
-     throw std::runtime_error(std::string("Can not check is table exists " + tableName));
-   }
-
-   bool exists = (PQntuples(res) > 0);
-   PQclear(res);
-   return exists;
 }
 //------------------------------------------------------------------------------
-void DbMng::createTable(const std::string & dbName, const std::string & tableName, const std::string & fields) const
+bool DbMng::createDb(const std::string & dbName) const
 {
-  PGconn *conn = nullptr;
-  std::string conninfo = "host=127.0.0.1 user=" + _user + "password=" + _password + " dbname=" + dbName;
-
-  conn = PQconnectdb(conninfo.c_str());
-  if(PQstatus(conn) != CONNECTION_OK)
+  try
   {
-    PQfinish(conn);
-    throw std::runtime_error("Can not connect to DB");
-  }
+    std::string connStr = "host=127.0.0.1 port=5432 user=" + _user + " password=" + _password;
+    pqxx::connection conn(connStr);
 
-  PGresult *res = nullptr;
-  res = PQexec(conn, std::string("CREATE TABLE " + tableName + " (" + fields + ");").c_str());
+    if (conn.is_open() == false)
+    {
+      _log->error(SPDLOG_FMT_STRING("Can not open connection to db {}"), dbName);
+      return false;
+    }
 
-  if(PQresultStatus(res) != PGRES_COMMAND_OK)
+    pqxx::nontransaction txn(conn);
+    std::string execStr = "CREATE DATABASE " + dbName;
+    pqxx::result res = txn.exec(execStr);
+    conn.close();
+
+    _log->info(SPDLOG_FMT_STRING("Created db {}"), dbName);
+    return true;
+  } catch (const std::exception & err)
   {
-    PQclear(res);
-    PQfinish(conn);
-    throw std::runtime_error(std::string("Can not CREATE TABLE " + tableName));
+    _log->error(SPDLOG_FMT_STRING("Exception in createDB! {} "), err.what());
+    return false;
   }
 }
 //------------------------------------------------------------------------------
-int DbMng::isExistsInTable(const std::string & condition, const std::string & dbName, const std::string & tableName) const
+bool DbMng::isTableExist(const std::string & dbName, const std::string & tableName) const
 {
-  PGconn *conn = nullptr;
-  std::string conninfo = "host=127.0.0.1 user=" + _user + "password=" + _password + " dbname=" + dbName;
-  conn = PQconnectdb(conninfo.c_str());
-  if(PQstatus(conn) != CONNECTION_OK)
+  try
   {
-    PQfinish(conn);
-    throw std::runtime_error("Can not connect to DB");
-  }
+    std::string connStr = "host=127.0.0.1 port=5432 user=" + _user + " password=" + _password + " dbname=" + dbName;
+    pqxx::connection conn(connStr);
 
-  PGresult *res = nullptr;
-  res = PQexec(conn, std::string("SELECT * FROM " + tableName + " WHERE " + condition + ";").c_str());
+    if (conn.is_open() == false)
+    {
+      _log->error(SPDLOG_FMT_STRING("Can not open connection to db {}"), dbName);
+      return false;
+    }
 
-  if(PQresultStatus(res) != PGRES_TUPLES_OK)
+    pqxx::nontransaction txn(conn);
+    std::string execStr = "SELECT * FROM information_schema.tables WHERE table_schema = 'public' AND table_name =" + txn.quote(tableName);
+    pqxx::result res = txn.exec(execStr);
+    conn.close();
+
+    return !res.empty();
+  } catch (const std::exception & err)
   {
-    PQclear(res);
-    PQfinish(conn);
-    throw std::runtime_error(std::string("Can not SELECT " + condition));
+    _log->error(SPDLOG_FMT_STRING("Exception in isTableExist! {} "), err.what());
+    return false;
   }
+}
 
-  int n_tuples = PQntuples(res);
-  PQclear(res);
-  PQfinish(conn);
-  return n_tuples;
+//------------------------------------------------------------------------------
+bool DbMng::createTable(const std::string & dbName, const std::string & tableName, const std::string & fields) const
+{
+  try
+  {
+    std::string connStr = "host=127.0.0.1 port=5432 user=" + _user + " password=" + _password + " dbname=" + dbName;
+    pqxx::connection conn(connStr);
+
+    if (conn.is_open() == false)
+    {
+      _log->error(SPDLOG_FMT_STRING("Can not open connection to db {}"), dbName);
+      return false;
+    }
+
+    pqxx::work txn(conn);
+    std::string execStr = "CREATE TABLE " + tableName + " (" + fields + ")";
+    pqxx::result res = txn.exec(execStr);
+    txn.commit();
+    conn.close();
+
+    _log->info(SPDLOG_FMT_STRING("Created table {} in db {}"), tableName, dbName);
+    return true;
+  } catch (const std::exception & err)
+  {
+    _log->error(SPDLOG_FMT_STRING("Exception in createTable! {} "), err.what());
+    return false;
+  }
 }
 //------------------------------------------------------------------------------
+bool DbMng::isExistInTable(const std::string & condition, const std::string & dbName, const std::string & tableName) const
+{
+  try
+  {
+    std::string connStr = "host=127.0.0.1 port=5432 user=" + _user + " password=" + _password + " dbname=" + dbName;
+    pqxx::connection conn(connStr);
+
+    if (conn.is_open() == false)
+    {
+      _log->error(SPDLOG_FMT_STRING("Can not open connection to db {}"), dbName);
+      return false;
+    }
+
+    pqxx::nontransaction txn(conn);
+    std::string execStr = "SELECT EXISTS (SELECT * FROM " + tableName + " WHERE " + condition + ")";
+    pqxx::result res = txn.exec(execStr);
+    conn.close();
+
+    return res[0][0].as<bool>();
+  } catch (const std::exception & err)
+  {
+    _log->error(SPDLOG_FMT_STRING("Exception in isTableExist! {} "), err.what());
+    return false;
+  }
+
+}
+//------------------------------------------------------------------------------
+bool DbMng::addEntry(const std::string & dbName, const std::string & tableName, const std::string & columns, const std::string & values) const
+{
+  try
+  {
+    std::string connStr = "host=127.0.0.1 port=5432 user=" + _user + " password=" + _password + " dbname=" + dbName;
+    pqxx::connection conn(connStr);
+
+    if (conn.is_open() == false)
+    {
+      _log->error(SPDLOG_FMT_STRING("Can not open connection to db {}"), dbName);
+      return false;
+    }
+
+    pqxx::work txn(conn);
+    std::string execStr = "INSERT INTO " + tableName + " " + columns + " VALUES " + values;
+    pqxx::result res = txn.exec(execStr);
+    txn.commit();
+    conn.close();
+
+    _log->info(SPDLOG_FMT_STRING("Added values {} in table {} in db {}"), values, tableName, dbName);
+    return true;
+  } catch (const std::exception & err)
+  {
+    _log->error(SPDLOG_FMT_STRING("Exception in addEntry! {} "), err.what());
+    return false;
+  }
+}
+//------------------------------------------------------------------------------
+bool DbMng::editEntry(const std::string & dbName, const std::string & tableName, const std::string & updateFields, const std::string & condition) const
+{
+  try
+  {
+    std::string connStr = "host=127.0.0.1 port=5432 user=" + _user + " password=" + _password + " dbname=" + dbName;
+    pqxx::connection conn(connStr);
+
+    if (conn.is_open() == false)
+    {
+      _log->error(SPDLOG_FMT_STRING("Can not open connection to db {}"), dbName);
+      return false;
+    }
+
+    pqxx::work txn(conn);
+    std::string execStr = "UPDATE " + tableName + " SET " + updateFields + " WHERE " + condition;
+    pqxx::result res = txn.exec(execStr);
+    txn.commit();
+    conn.close();
+
+    _log->info(SPDLOG_FMT_STRING("Updated fields {} in table {} in db {}"), updateFields, tableName, dbName);
+    return true;
+  } catch (const std::exception & err)
+  {
+    _log->error(SPDLOG_FMT_STRING("Exception in editEntry! {} "), err.what());
+    return false;
+  }
+}
+//------------------------------------------------------------------------------
+

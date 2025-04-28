@@ -2,24 +2,30 @@
 #define DBMNG_H
 //------------------------------------------------------------------------------
 #include <iostream>
-#include <libpq-fe.h>
+#include <pqxx/pqxx>
+#include <spdlog/spdlog.h>
+//------------------------------------------------------------------------------
+using loggerPtr = std::shared_ptr<spdlog::logger>;
 //------------------------------------------------------------------------------
 class DbMng
 {
 protected:
   std::string _user;
   std::string _password;
+  loggerPtr & _log;
 public:
-  DbMng(const std::string & user, const std::string & password);
+  DbMng(const std::string & user, const std::string & password, loggerPtr & log);
 
-  bool isDatabaseExists(const std::string & dbName) const;
-  void createDb(const std::string & dbName) const;
+  bool isDatabaseExist(const std::string & dbName) const;
+  bool createDb(const std::string & dbName) const;
 
-  bool isTableExists(const std::string & dbName, const std::string & tableName) const;
-  void createTable(const std::string & dbName, const std::string & tableName, const std::string & fields) const;
-  int isExistsInTable(const std::string & condition, const std::string & dbName, const std::string & tableName) const;
+  bool isTableExist(const std::string & dbName, const std::string & tableName) const;
+  bool createTable(const std::string & dbName, const std::string & tableName, const std::string & fields) const;
+  bool isExistInTable(const std::string & condition, const std::string & dbName, const std::string & tableName) const;
 
-  virtual ~DbMng() = 0;
+  bool addEntry(const std::string & dbName, const std::string & tableName, const std::string & columns, const std::string & values) const;
+  bool editEntry(const std::string & dbName, const std::string & tableName, const std::string & updateFields, const std::string & condition) const;
+  virtual ~DbMng() {}
 };
 //------------------------------------------------------------------------------
 
