@@ -28,6 +28,8 @@ set(Boost_USE_STATIC_LIBS ON)
 
 find_package(OpenSSL REQUIRED)
 
+find_package(GTest REQUIRED)
+
 if(Boost_FOUND)
   include_directories(${Boost_INCLUDE_DIRS})
   message(STATUS "Boost found: ${Boost_VERSION_STRING}")
@@ -46,6 +48,11 @@ target_link_libraries(beast_server_lib PUBLIC requestMng_lib OpenSSL::SSL OpenSS
 
 add_executable(http_server main.cpp)
 target_link_libraries(http_server beast_server_lib)
+
+add_executable(test_http_server tests/tests.cpp)
+include_directories("src/")
+target_link_libraries(test_http_server beast_server_lib GTest::GTest GTest::Main)
+
 
 install(TARGETS http_server RUNTIME DESTINATION bin)
 set(CPACK_GENERATOR DEB)

@@ -2,7 +2,43 @@
 //------------------------------------------------------------------------------
 namespace
 {
-std::string l_sessionExpired = "30";
+const std::string l_sessionExpired = "30";
+const std::string l_dbUser = "postgres";
+const std::string l_dbPassword = "postgres";
+}
+//------------------------------------------------------------------------------
+beast::string_view mime_type(beast::string_view path)
+{
+  using beast::iequals;
+  auto const ext = [&path]
+  {
+    auto const pos = path.rfind(".");
+    if(pos == beast::string_view::npos)
+      return beast::string_view{};
+    return path.substr(pos);
+  }();
+  if(iequals(ext, ".htm"))  return "text/html";
+  if(iequals(ext, ".html")) return "text/html";
+  if(iequals(ext, ".php"))  return "text/html";
+  if(iequals(ext, ".css"))  return "text/css";
+  if(iequals(ext, ".txt"))  return "text/plain";
+  if(iequals(ext, ".js"))   return "application/javascript";
+  if(iequals(ext, ".json")) return "application/json";
+  if(iequals(ext, ".xml"))  return "application/xml";
+  if(iequals(ext, ".swf"))  return "application/x-shockwave-flash";
+  if(iequals(ext, ".flv"))  return "video/x-flv";
+  if(iequals(ext, ".png"))  return "image/png";
+  if(iequals(ext, ".jpe"))  return "image/jpeg";
+  if(iequals(ext, ".jpeg")) return "image/jpeg";
+  if(iequals(ext, ".jpg"))  return "image/jpeg";
+  if(iequals(ext, ".gif"))  return "image/gif";
+  if(iequals(ext, ".bmp"))  return "image/bmp";
+  if(iequals(ext, ".ico"))  return "image/vnd.microsoft.icon";
+  if(iequals(ext, ".tiff")) return "image/tiff";
+  if(iequals(ext, ".tif"))  return "image/tiff";
+  if(iequals(ext, ".svg"))  return "image/svg+xml";
+  if(iequals(ext, ".svgz")) return "image/svg+xml";
+  return "application/text";
 }
 //------------------------------------------------------------------------------
 std::string path_cat(beast::string_view base, beast::string_view path)
@@ -23,7 +59,8 @@ RequestMng::RequestMng(std::shared_ptr<std::string const> & doc_root, loggerPtr 
   _doc_root(doc_root),
   _log(log)
 {
-  _authMng = std::make_unique<AuthMng>("postgres", "postgres", _log);
+  _authMng = std::make_unique<AuthMng>(l_dbUser, l_dbPassword, _log);
+  _contentMng = std::make_unique<ContentMng>(l_dbUser, l_dbPassword, _log);
 }
 //------------------------------------------------------------------------------
 void RequestMng::onGetHttpRequest(const HttpRequest & req, HttpResponse & res, HttpFileResponse & fileRes) const
@@ -69,6 +106,12 @@ void RequestMng::onPostRequest(const HttpRequest &req, HttpResponse &res) const
     return;
   }
 
+  if (req.target() == "/addpost")
+  {
+    onAddPost(req, res);
+    return;
+  }
+
   generateResponse(req, "Unknown HTTP-method", res, http::status::bad_request);
 }
 //------------------------------------------------------------------------------
@@ -76,9 +119,9 @@ void RequestMng::onLogin(const HttpRequest &req, HttpResponse &res) const
 {
   try
   {
-    std::string session_id;
-    getSessionIdFromReq(req, session_id);
-    if (session_id.empty())
+    std::string sessionId;
+    getSessionIdFromReq(req, sessionId);
+    if (sessionId.empty() || sessionId.empty() == false && _authMng->checkSession(sessionId) == false)
     {
       json::value jsonValue;
       parseJsonBody(req, jsonValue);
@@ -88,11 +131,18 @@ void RequestMng::onLogin(const HttpRequest &req, HttpResponse &res) const
       if (_authMng->checkLogin(login) == false)
         throw std::runtime_error("User not found");
 
-      generateSessionId(session_id);
-      _authMng->setSessionIdByLogin(session_id, login);
-      res.set(http::field::set_cookie, session_id);
+      generateSessionId(sessionId);
+      _authMng->setSessionIdByLogin(sessionId, login);
+      res.set(http::field::set_cookie, sessionId);
     }
-    generateResponse(req, "Login successful", res, http::status::ok);
+
+    json::object user;
+    std::string username;
+    _authMng->getLoginBySessionId(sessionId, username);
+    user["username"] = username;
+
+    std::string jsonStr = json::serialize(user);
+    generateResponseWithContentType(req, jsonStr, "application/json", res, http::status::ok);
   } catch (const std::exception & err)
   {
     generateResponse(req, "User not found", res, http::status::not_found);
@@ -104,9 +154,10 @@ void RequestMng::onLogout(const HttpRequest & req, HttpResponse & res) const
 {
   try
   {
-    std::string session_id;
-    getSessionIdFromReq(req, session_id);
-    if (session_id.empty())
+    std::string sessionId;
+    getSessionIdFromReq(req, sessionId);
+
+    if (sessionId.empty())
     {
       json::value jsonValue;
       parseJsonBody(req, jsonValue);
@@ -118,7 +169,7 @@ void RequestMng::onLogout(const HttpRequest & req, HttpResponse & res) const
       _authMng->logoutByLogin(login);
     }
     else
-      _authMng->logoutBySessionId(session_id);
+      _authMng->logoutBySessionId(sessionId);
     generateResponse(req, "Logout successful", res, http::status::ok);
   } catch (const std::exception & err)
   {
@@ -139,11 +190,18 @@ void RequestMng::onRegister(const HttpRequest & req, HttpResponse & res) const
     if (_authMng->registerUser(login, password) == false)
       throw std::runtime_error("User is already registered");
 
-    std::string session_id;
-    generateSessionId(session_id);
-    _authMng->setSessionIdByLogin(session_id, login);
-    res.set(http::field::set_cookie, session_id);
-    generateResponse(req, "Registration successful", res, http::status::ok);
+    std::string sessionId;
+    generateSessionId(sessionId);
+    _authMng->setSessionIdByLogin(sessionId, login);
+    res.set(http::field::set_cookie, sessionId);
+
+    json::object user;
+    std::string username;
+    _authMng->getLoginBySessionId(sessionId, username);
+    user["username"] = username;
+
+    std::string jsonStr = json::serialize(user);
+    generateResponseWithContentType(req, jsonStr, "application/json", res, http::status::ok);
   } catch (const std::exception & err)
   {
     generateResponse(req, std::string("User didn't registered: " + std::string(err.what())), res, http::status::not_found);
@@ -151,8 +209,52 @@ void RequestMng::onRegister(const HttpRequest & req, HttpResponse & res) const
   }
 }
 //------------------------------------------------------------------------------
-void RequestMng::onGetRequest(const HttpRequest &req, HttpResponse &res, HttpFileResponse & fileRes) const
+void RequestMng::onAddPost(const HttpRequest &req, HttpResponse &res) const
 {
+  try
+  {
+    std::string sessionId;
+    getSessionIdFromReq(req, sessionId);
+    if (sessionId.empty())
+      throw std::runtime_error("Unknown user");
+
+    if(_authMng->checkSession(sessionId) == false)
+      throw std::runtime_error("Session expired");
+
+    json::value jsonValue;
+    parseJsonBody(req, jsonValue);
+    std::string theme = json::value_to<std::string>(jsonValue.at("theme"));
+    std::string data = json::value_to<std::string>(jsonValue.at("data"));
+    std::string user;
+
+    _authMng->getLoginBySessionId(sessionId, user);
+    _contentMng->addPost(user, theme, data);
+    generateResponse(req, "Post added successful", res, http::status::ok);
+  } catch (const std::exception & err)
+  {
+    generateResponse(req, std::string("Did not add post: " + std::string(err.what())), res, http::status::bad_request);
+    return;
+  }
+}
+//------------------------------------------------------------------------------
+void RequestMng::generateResponseWithContentType(const HttpRequest & req, const std::string & bodyMsg, const std::string & contentType, HttpResponse & res, http::status status) const
+{
+  res.version(req.version());
+  res.result(status);
+  res.set(http::field::content_type, contentType);
+  res.keep_alive(req.keep_alive());
+  res.body() = bodyMsg;
+  res.prepare_payload();
+}
+//------------------------------------------------------------------------------
+void RequestMng::onGetRequest(const HttpRequest & req, HttpResponse & res, HttpFileResponse & fileRes) const
+{
+  if (req.target().starts_with("/getposts"))
+  {
+    onGetPosts(req, res);
+    return;
+  }
+
   onGetHtml(req, res, fileRes);
 }
 //------------------------------------------------------------------------------
@@ -194,6 +296,31 @@ void RequestMng::onGetHtml(const HttpRequest & req, HttpResponse & res, HttpFile
   fileRes.keep_alive(req.keep_alive());
 }
 //------------------------------------------------------------------------------
+void RequestMng::onGetPosts(const HttpRequest & req, HttpResponse & res) const
+{
+  try
+  {
+    std::string sessionId;
+    getSessionIdFromReq(req, sessionId);
+    if (sessionId.empty())
+      throw std::runtime_error("Unknown user");
+
+    if(_authMng->checkSession(sessionId) == false)
+      throw std::runtime_error("Session expired");
+
+    json::object jsonPosts;
+    json::array posts;
+    _contentMng->getAllPosts(posts);
+    jsonPosts["posts"] = posts;
+    std::string jsonStr = json::serialize(jsonPosts);
+    generateResponseWithContentType(req, jsonStr, "application/json", res, http::status::ok);
+  } catch (const std::exception & err)
+  {
+    generateResponse(req, std::string(": " + std::string(err.what())), res, http::status::not_found);
+    return;
+  }
+}
+//------------------------------------------------------------------------------
 void RequestMng::generateResponse(const HttpRequest & req, const std::string & bodyMsg, HttpResponse & res, http::status status) const
 {
   res.version(req.version());
@@ -211,7 +338,6 @@ void RequestMng::clearExpiredSessions() const
 //------------------------------------------------------------------------------
 void parseJsonBody(const HttpRequest & req, json::value & jsonValue)
 {
-  // проверка что Content-Type: application/json
   if (req.find(http::field::content_type) == req.end() ||
       req.at(http::field::content_type) != "application/json")
   {
@@ -238,17 +364,6 @@ void getSessionIdFromReq(const HttpRequest & req, std::string & sessionId)
   if (it == req.end()) {
       return;
   }
-
-  std::string cookies = it->value();
-  std::string key = "session_id=";
-
-  size_t start = cookies.find(key);
-  if (start == std::string::npos) {
-      return;
-  }
-
-  start += key.length();
-  size_t end = cookies.find(';', start);
-  sessionId = cookies.substr(start, end - start);
+  sessionId = it->value();
 }
 //------------------------------------------------------------------------------

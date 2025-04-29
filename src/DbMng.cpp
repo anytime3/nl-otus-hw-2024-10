@@ -140,7 +140,6 @@ bool DbMng::isExistInTable(const std::string & dbName, const std::string & table
     _log->error(SPDLOG_FMT_STRING("Exception in isTableExist! {} "), err.what());
     return false;
   }
-
 }
 //------------------------------------------------------------------------------
 bool DbMng::addEntry(const std::string & dbName, const std::string & tableName, const std::string & columns, const std::string & values) const
@@ -228,10 +227,49 @@ bool DbMng::editEntry(const std::string & dbName, const std::string & tableName,
     return false;
   }
 }
-
-void DbMng::selectFrom(const std::string &dbName, const std::string &tableName, const std::string &select, const std::string &condition) const
+//------------------------------------------------------------------------------
+void DbMng::selectFrom(const std::string & dbName, const std::string & tableName, const std::string & select, pqxx::result & res) const
 {
+  try
+  {
+    std::string connStr = "host=127.0.0.1 port=5432 user=" + _user + " password=" + _password + " dbname=" + dbName;
+    pqxx::connection conn(connStr);
 
+    if (conn.is_open() == false)
+    {
+      _log->error(SPDLOG_FMT_STRING("Can not open connection to db {}"), dbName);
+    }
+
+    pqxx::nontransaction txn(conn);
+    std::string execStr = "SELECT " + select + " FROM " + tableName;
+    res = txn.exec(execStr);
+    conn.close();
+  } catch (const std::exception & err)
+  {
+    _log->error(SPDLOG_FMT_STRING("Exception in selectFrom! {} "), err.what());
+  }
+}
+//------------------------------------------------------------------------------
+void DbMng::selectFromWhere(const std::string & dbName, const std::string & tableName, const std::string & select, const std::string & condition, pqxx::result & res) const
+{
+  try
+  {
+    std::string connStr = "host=127.0.0.1 port=5432 user=" + _user + " password=" + _password + " dbname=" + dbName;
+    pqxx::connection conn(connStr);
+
+    if (conn.is_open() == false)
+    {
+      _log->error(SPDLOG_FMT_STRING("Can not open connection to db {}"), dbName);
+    }
+
+    pqxx::nontransaction txn(conn);
+    std::string execStr = "SELECT " + select + " FROM " + tableName + " WHERE " + condition;
+    res = txn.exec(execStr);
+    conn.close();
+  } catch (const std::exception & err)
+  {
+    _log->error(SPDLOG_FMT_STRING("Exception in selectFromWhere! {} "), err.what());
+  }
 }
 //------------------------------------------------------------------------------
 

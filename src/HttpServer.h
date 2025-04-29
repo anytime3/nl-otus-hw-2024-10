@@ -20,12 +20,12 @@ std::string path_cat(beast::string_view base, beast::string_view path);
 //------------------------------------------------------------------------------
 class session : public std::enable_shared_from_this<session>
 {
-  ssl::stream<beast::tcp_stream> stream_;
-  beast::flat_buffer buffer_;
-  std::shared_ptr<std::string const> doc_root_;
-  http::request<http::string_body> req_;
-  std::shared_ptr<RequestMng> & _reqMng;
-  loggerPtr _log;
+  ssl::stream<beast::tcp_stream>     _stream;
+  beast::flat_buffer                 _buffer;
+  std::shared_ptr<std::string const> _doc_root;
+  http::request<http::string_body>   _req;
+  std::shared_ptr<RequestMng> &      _reqMng;
+  loggerPtr                          _log;
 public:
   session(tcp::socket&& socket, ssl::context & ctx, std::shared_ptr<std::string const> const & doc_root, loggerPtr & log, std::shared_ptr<RequestMng> & reqMng);
   void run();
@@ -42,13 +42,13 @@ public:
 //------------------------------------------------------------------------------
 class listener : public std::enable_shared_from_this<listener>
 {
-  net::io_context & ioc_;
-  ssl::context & ctx_;
-  tcp::acceptor acceptor_;
-  std::shared_ptr<std::string const> doc_root_;
-  loggerPtr _log;
-  std::shared_ptr<RequestMng> _reqMng;
-  net::steady_timer _timer;
+  net::io_context &                      _io_context;
+  ssl::context &                         _sslContext;
+  tcp::acceptor                          _acceptor;
+  std::shared_ptr<std::string const>     _doc_root;
+  loggerPtr                              _log;
+  std::shared_ptr<RequestMng>            _reqMng;
+  net::steady_timer                      _timer;
   std::function<void(beast::error_code)> _timerHandler;
 public:
   listener(net::io_context& ioc, ssl::context& ctx, tcp::endpoint endpoint, std::shared_ptr<std::string const> const & doc_root, loggerPtr & log);
@@ -60,3 +60,4 @@ private:
 };
 //------------------------------------------------------------------------------
 #endif // HTTPSERVER_H
+//------------------------------------------------------------------------------

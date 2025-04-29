@@ -2,6 +2,8 @@
 //------------------------------------------------------------------------------
 namespace
 {
+const std::string l_sessionExpired = "30";
+
 const std::string l_dbName = "http_server";
 
 const std::string l_usersTableName = "users";
@@ -15,7 +17,7 @@ const std::string l_sessionsColumns = "(session_id, login, expires_at)";
 //------------------------------------------------------------------------------
 AuthMng::AuthMng(const std::string & user, const std::string & password, loggerPtr & log) :
   DbMng(user, password, log),
-  _minExpires("30")
+  _minExpires(l_sessionExpired)
 {
   if (isDatabaseExist(l_dbName) == false)
     createDb(l_dbName);
@@ -33,15 +35,15 @@ bool AuthMng::checkLogin(const std::string & login) const
   return isExistInTable(l_dbName, l_usersTableName, query);
 }
 //------------------------------------------------------------------------------
-bool AuthMng::checkSession(const std::string &session_id) const
+bool AuthMng::checkSession(const std::string & sessionId) const
 {
-  std::string query = "session_id='" + session_id + "'";
+  std::string query = "session_id='" + sessionId + "'";
   return isExistInTable(l_dbName, l_sessionsTableName, query);
 }
 //------------------------------------------------------------------------------
-bool AuthMng::logoutBySessionId(const std::string & session_id)
+bool AuthMng::logoutBySessionId(const std::string & sessionId)
 {
-  std::string condition = "session_id='" + session_id + "'";
+  std::string condition = "session_id='" + sessionId + "'";
   return deleteEntry(l_dbName, l_sessionsTableName, condition);
 }
 //------------------------------------------------------------------------------
@@ -59,13 +61,13 @@ bool AuthMng::registerUser(const std::string & login, const std::string & passwo
   return addEntry(l_dbName, l_usersTableName, l_usersColumns, values);
 }
 //------------------------------------------------------------------------------
-bool AuthMng::setSessionIdByLogin(const std::string & session_id, const std::string & login) const
+bool AuthMng::setSessionIdByLogin(const std::string & sessionId, const std::string & login) const
 {
-  std::string condition = "session_id='" + session_id + "'";
+  std::string condition = "login='" + login + "'";
   if (isExistInTable(l_dbName, l_sessionsTableName, condition))
     deleteEntry(l_dbName, l_sessionsTableName, condition);
 
-  condition = "('" + session_id + "', '" + login + "', now() + interval '" + _minExpires + " minutes')";
+  condition = "('" + sessionId + "', '" + login + "', now() + interval '" + _minExpires + " minutes')";
   return addEntry(l_dbName, l_sessionsTableName, l_sessionsColumns, condition);
 }
 //------------------------------------------------------------------------------
@@ -73,5 +75,14 @@ void AuthMng::deleteExpiredSessions() const
 {
   std::string condition = "expires_at <= now()";
   deleteEntry(l_dbName, l_sessionsTableName, condition);
+}
+
+void AuthMng::getLoginBySessionId(const std::string & sessionId, std::string & login)
+{
+  pqxx::result res;
+  std::string condition = "session_id='" + sessionId + "'";
+  selectFromWhere(l_dbName, l_sessionsTableName, "login", condition, res);
+  if (res.empty() == false)
+    login = res[0][0].as<std::string>();
 }
 //------------------------------------------------------------------------------

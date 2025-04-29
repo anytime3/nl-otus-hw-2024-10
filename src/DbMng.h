@@ -12,8 +12,9 @@ class DbMng
 protected:
   std::string _user;
   std::string _password;
-  loggerPtr _log;
+  loggerPtr   _log;
 public:
+  DbMng() {};
   DbMng(const std::string & user, const std::string & password, loggerPtr & log);
 
   bool isDatabaseExist(const std::string & dbName) const;
@@ -26,9 +27,10 @@ public:
   bool addEntry(const std::string & dbName, const std::string & tableName, const std::string & columns, const std::string & values) const;
   bool deleteEntry(const std::string & dbName, const std::string & tableName, const std::string & condition) const;
   bool editEntry(const std::string & dbName, const std::string & tableName, const std::string & updateFields, const std::string & condition) const;
-  void selectFrom(const std::string & dbName, const std::string & tableName, const std::string & select, const std::string & condition) const;
+  void selectFrom(const std::string & dbName, const std::string & tableName, const std::string & select, pqxx::result & res) const;
+  void selectFromWhere(const std::string & dbName, const std::string & tableName, const std::string & select, const std::string & condition, pqxx::result & res) const;
   virtual ~DbMng() {}
 };
 //------------------------------------------------------------------------------
-
 #endif // DBMNG_H
+//------------------------------------------------------------------------------

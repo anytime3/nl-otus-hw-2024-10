@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <title>Форум</title>
+  <style>
+    body {
+      font-family: "Segoe UI", sans-serif;
+      background: white;
+      color: #333;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 2rem;
+    }
+
+    h1 {
+      color: black;
+      margin-bottom: 1rem;
+    }
+
+    #auth, #addPostBlock, #logoutDiv {
+      background: white;
+      border: 1px solid #ddd;
+      border-radius: 12px;
+      padding: 1rem 2rem;
+      margin: 1rem;
+      width: 50%;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    }
+
+    input, button {
+      margin: 0.5rem;
+      padding: 0.5rem 1rem;
+      border-radius: 8px;
+      border: 1px solid #ccc;
+      font-size: 1rem;
+    }
+
+    button {
+      background-color: black;
+      border: none;
+      color: white;
+      cursor: pointer;
+    }
+
+    button:hover {
+      background-color: black;
+    }
+
+    #posts {
+      width: 60%;
+      background: white;
+      padding: 1rem;
+      margin: 1rem 0;
+      border-radius: 12px;
+      border: 1px solid #ccc;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+    }
+
+    .post {
+      padding: 0.5rem;
+      border-bottom: 1px solid #eee;
+      text-align: left;
+    }
+
+    .login-info {
+      font-weight: bold;
+      color: #996aa3;
+      margin-top: 1rem;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>Форум</h1>
+
+  <div id="auth">
+    <input type="text" id="login" placeholder="логин">
+    <input type="password" id="password" placeholder="пароль">
+    <button onclick="auth('login')">вход</button>
+    <button onclick="auth('register')">регистрация</button>
+  </div>
+
+  <div id="logoutDiv" style="display: none">
+    <button onclick="logout()">выйти</button>
+    <div class="login-info">вошли как: <span id="currentUser"></span></div>
+  </div>
+
+  <h2>Посты</h2>
+  <div id="posts">загрузка...</div>
+
+  <div id="addPostBlock" style="display: none">
+    <input type="text" id="theme" placeholder="тема">
+    <input type="text" id="data" placeholder="текст поста">
+    <button onclick="addPost()">добавить пост</button>
+  </div>
+
+  <script>
+    async function checkSession() {
+      const res = await fetch("/login", { method: "POST" })
+      if (res.ok) {
+        const data = await res.json()
+        enter(data["username"])
+      } else {
+        document.getElementById("auth").style.display = "block"
+        document.getElementById("logoutDiv").style.display = "none"
+        document.getElementById("addPostBlock").style.display = "none"
+      }
+
+      await loadPosts()
+    }
+
+    function enter(loginName) {
+      document.getElementById("auth").style.display = "none"
+      document.getElementById("logoutDiv").style.display = "block"
+      document.getElementById("addPostBlock").style.display = "block"
+      document.getElementById("currentUser").innerText = loginName
+    }
+
+    async function auth(type) {
+      const login = document.getElementById("login").value
+      const password = document.getElementById("password").value
+
+      const res = await fetch("/" + type, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ login, password })
+      })
+
+      if (res.ok) {
+        const data = await res.json()
+        enter(data.login)
+        await loadPosts()
+      } else {
+        alert("ошибка входа/регистрации")
+      }
+    }
+
+    async function logout() {
+      await fetch("/logout", { method: "POST" })
+      document.getElementById("auth").style.display = "block"
+      document.getElementById("logoutDiv").style.display = "none"
+      document.getElementById("addPostBlock").style.display = "none"
+      document.getElementById("currentUser").innerText = ""
+      await loadPosts()
+    }
+
+    async function loadPosts() {
+      const res = await fetch("/getposts")
+      if (!res.ok) {
+        document.getElementById("posts").innerText = "ошибка загрузки"
+        return
+      }
+
+      const data = await res.json()
+      if (!Array.isArray(data["posts"])) {
+        document.getElementById("posts").innerText = "неправильный ответ от сервера"
+        return
+      }
+
+      document.getElementById("posts").innerHTML = data["posts"].map(p =>
+        `<div class="post"><b>${p.username}</b> [<i>${p.theme}</i>]: ${p.data}</div>`
+      ).join("")
+    }
+
+    async function addPost() {
+      const theme = document.getElementById("theme").value
+      const data = document.getElementById("data").value
+
+      const res = await fetch("/addpost", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ theme, data })
+      })
+
+      if (res.ok) {
+        document.getElementById("theme").value = ""
+        document.getElementById("data").value = ""
+        await loadPosts()
+      } else {
+        alert("ошибка при добавлении поста")
+      }
+    }
+
+    checkSession()
+  </script>
+
+</body>
+</html>
