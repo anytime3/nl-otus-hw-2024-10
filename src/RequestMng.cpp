@@ -1,12 +1,54 @@
 #include "RequestMng.h"
+//------------------------------------------------------------------------------
+namespace
+{
+std::string l_sessionExpired = "30";
+}
+//------------------------------------------------------------------------------
+std::string path_cat(beast::string_view base, beast::string_view path)
+{
+  if(base.empty())
+    return std::string(path);
+  std::string result(base);
 
+  char constexpr path_separator = '/';
+  if(result.back() == path_separator)
+    result.resize(result.size() - 1);
+  result.append(path.data(), path.size());
 
-RequestMng::RequestMng(loggerPtr & log) :
+  return result;
+}
+//------------------------------------------------------------------------------
+RequestMng::RequestMng(std::shared_ptr<std::string const> & doc_root, loggerPtr & log) :
+  _doc_root(doc_root),
   _log(log)
 {
   _authMng = std::make_unique<AuthMng>("postgres", "postgres", _log);
 }
+//------------------------------------------------------------------------------
+void RequestMng::onGetHttpRequest(const HttpRequest & req, HttpResponse & res, HttpFileResponse & fileRes) const
+{
+  // Request path must be absolute and not contain "..".
+  if(req.target().empty() || req.target()[0] != '/' || req.target().find("..") != boost::beast::string_view::npos)
+  {
+    generateResponse(req, "Illegal request-target", res, http::status::bad_request);
+    return;
+  }
 
+  switch (req.method())
+  {
+  case http::verb::get:
+    onGetRequest(req, res, fileRes);
+    break;
+  case http::verb::post:
+    onPostRequest(req, res);
+    break;
+  default:
+    generateResponse(req, "Unknown HTTP-method", res, http::status::bad_request);
+    break;
+  }
+}
+//------------------------------------------------------------------------------
 void RequestMng::onPostRequest(const HttpRequest &req, HttpResponse &res) const
 {
   if (req.target() == "/login")
@@ -21,10 +63,71 @@ void RequestMng::onPostRequest(const HttpRequest &req, HttpResponse &res) const
     return;
   }
 
+  if (req.target() == "/logout")
+  {
+    onLogout(req, res);
+    return;
+  }
+
   generateResponse(req, "Unknown HTTP-method", res, http::status::bad_request);
 }
-
+//------------------------------------------------------------------------------
 void RequestMng::onLogin(const HttpRequest &req, HttpResponse &res) const
+{
+  try
+  {
+    std::string session_id;
+    getSessionIdFromReq(req, session_id);
+    if (session_id.empty())
+    {
+      json::value jsonValue;
+      parseJsonBody(req, jsonValue);
+      std::string login = json::value_to<std::string>(jsonValue.at("login"));
+      std::string password = json::value_to<std::string>(jsonValue.at("password"));
+
+      if (_authMng->checkLogin(login) == false)
+        throw std::runtime_error("User not found");
+
+      generateSessionId(session_id);
+      _authMng->setSessionIdByLogin(session_id, login);
+      res.set(http::field::set_cookie, session_id);
+    }
+    generateResponse(req, "Login successful", res, http::status::ok);
+  } catch (const std::exception & err)
+  {
+    generateResponse(req, "User not found", res, http::status::not_found);
+    return;
+  }
+}
+//------------------------------------------------------------------------------
+void RequestMng::onLogout(const HttpRequest & req, HttpResponse & res) const
+{
+  try
+  {
+    std::string session_id;
+    getSessionIdFromReq(req, session_id);
+    if (session_id.empty())
+    {
+      json::value jsonValue;
+      parseJsonBody(req, jsonValue);
+      std::string login = json::value_to<std::string>(jsonValue.at("login"));
+
+      if (_authMng->checkLogin(login) == false)
+        throw std::runtime_error("User not found");
+
+      _authMng->logoutByLogin(login);
+    }
+    else
+      _authMng->logoutBySessionId(session_id);
+    generateResponse(req, "Logout successful", res, http::status::ok);
+  } catch (const std::exception & err)
+  {
+    generateResponse(req, "User not found", res, http::status::not_found);
+    return;
+  }
+}
+//------------------------------------------------------------------------------
+void RequestMng::onRegister(const HttpRequest & req, HttpResponse & res) const
 {
   try
   {
@@ -33,51 +136,31 @@ void RequestMng::onLogin(const HttpRequest &req, HttpResponse &res) const
     std::string login = json::value_to<std::string>(jsonValue.at("login"));
     std::string password = json::value_to<std::string>(jsonValue.at("password"));
 
-    if (_authMng->checkLoginAndPassword(login, password) == false)
-      throw std::runtime_error("User not found");
+    if (_authMng->registerUser(login, password) == false)
+      throw std::runtime_error("User is already registered");
 
-    // сгенерировать session_id, присвоить поле Set-Cookieыё
-    generateResponse(req, "Login successful", res, http::status::ok);
+    std::string session_id;
+    generateSessionId(session_id);
+    _authMng->setSessionIdByLogin(session_id, login);
+    res.set(http::field::set_cookie, session_id);
+    generateResponse(req, "Registration successful", res, http::status::ok);
   } catch (const std::exception & err)
   {
-    generateResponse(req, "User not found", res, http::status::not_found);
+    generateResponse(req, std::string("User didn't registered: " + std::string(err.what())), res, http::status::not_found);
     return;
   }
 }
-
-void RequestMng::onGetHttpRequest(const HttpRequest & req, HttpResponse & res) const
+//------------------------------------------------------------------------------
+void RequestMng::onGetRequest(const HttpRequest &req, HttpResponse &res, HttpFileResponse & fileRes) const
 {
-  // Request path must be absolute and not contain "..".
-  if(req.target().empty() || req.target()[0] != '/' || req.target().find("..") != boost::beast::string_view::npos)
-  {
-    generateResponse(req, "Illegal request-target", res, http::status::bad_request);
-    return;
-  }
-
-  switch (req.method())
-  {
-  case http::verb::get:
-    onGetRequest(req, res);
-    break;
-  case http::verb::post:
-    onPostRequest(req, res);
-    break;
-  default:
-    generateResponse(req, "Unknown HTTP-method", res, http::status::bad_request);
-    break;
-  }
+  onGetHtml(req, res, fileRes);
 }
-
-void RequestMng::onGetRequest(const HttpRequest &req, HttpResponse &res) const
+//------------------------------------------------------------------------------
+void RequestMng::onGetHtml(const HttpRequest & req, HttpResponse & res, HttpFileResponse & fileRes) const
 {
-  onGetHtml(req, res);
-}
-
-void RequestMng::onGetHtml(const HttpRequest &req, HttpResponse &res) const
-{
-  /*// Build the path to the requested file
-  std::string path = path_cat(*doc_root_, req_.target());
-  if(req_.target().back() == '/')
+  // Build the path to the requested file
+  std::string path = path_cat(*_doc_root, req.target());
+  if(req.target().back() == '/')
     path.append("index.html");
 
   // Attempt to open the file
@@ -87,40 +170,30 @@ void RequestMng::onGetHtml(const HttpRequest &req, HttpResponse &res) const
 
   // Handle the case where the file doesn't exist
   if(ec == beast::errc::no_such_file_or_directory)
-    send_response(sendReply(req_, std::string("The resource '" + std::string(req_.target()) + "' was not found."), http::status::not_found));
-
+  {
+    generateResponse(req, std::string("The resource '" + std::string(req.target()) + "' was not found."), res, http::status::not_found);
+    return;
+  }
 
   // Handle an unknown error
   if(ec)
-    send_response(sendReply(req_, std::string("An error occurred: '" + ec.message() + "'"), http::status::internal_server_error));
-
+  {
+    generateResponse(req, std::string("An error occurred: '" + ec.message() + "'"), res, http::status::internal_server_error);
+    return;
+  }
   // Cache the size since we need it after the move
   auto const size = body.size();
 
-  // // Respond to HEAD request
-  // if(req.method() == http::verb::head)
-  // {
-  //   http::response<http::empty_body> res{http::status::ok, req.version()};
-  //   res.set(http::field::server, BOOST_BEAST_VERSION_STRING);
-  //   res.set(http::field::content_type, mime_type(path));
-  //   res.content_length(size);
-  //   res.keep_alive(req.keep_alive());
-  //   return res;
-  // }
-
   // Respond to GET request
-  http::response<http::file_body> res{std::piecewise_construct,
+  fileRes = HttpFileResponse {std::piecewise_construct,
         std::make_tuple(std::move(body)),
         std::make_tuple(http::status::ok,
-                        req_.version())};
-  res.set(http::field::server, BOOST_BEAST_VERSION_STRING);
-  res.set(http::field::content_type, mime_type(path));
-  res.content_length(size);
-  res.keep_alive(req_.keep_alive());
-
-  send_response(std::move(res));*/
+                        req.version())};
+  fileRes.set(http::field::content_type, mime_type(path));
+  fileRes.content_length(size);
+  fileRes.keep_alive(req.keep_alive());
 }
-
+//------------------------------------------------------------------------------
 void RequestMng::generateResponse(const HttpRequest & req, const std::string & bodyMsg, HttpResponse & res, http::status status) const
 {
   res.version(req.version());
@@ -129,6 +202,11 @@ void RequestMng::generateResponse(const HttpRequest & req, const std::string & b
   res.keep_alive(req.keep_alive());
   res.body() = bodyMsg;
   res.prepare_payload();
+}
+//------------------------------------------------------------------------------
+void RequestMng::clearExpiredSessions() const
+{
+  _authMng->deleteExpiredSessions();
 }
 //------------------------------------------------------------------------------
 void parseJsonBody(const HttpRequest & req, json::value & jsonValue)
@@ -140,10 +218,37 @@ void parseJsonBody(const HttpRequest & req, json::value & jsonValue)
     throw std::runtime_error("content-type must be application/json");
   }
 
-  // пытаемся распарсить тело
   boost::system::error_code ec;
   jsonValue = json::parse(req.body(), ec);
 
   if (ec)
     throw std::runtime_error("failed to parse json body");
 }
+//------------------------------------------------------------------------------
+void generateSessionId(std::string & session_id)
+{
+  boost::uuids::random_generator generator;
+  boost::uuids::uuid uuid = generator();
+  session_id = boost::uuids::to_string(uuid);
+}
+//------------------------------------------------------------------------------
+void getSessionIdFromReq(const HttpRequest & req, std::string & sessionId)
+{
+  auto it = req.find(http::field::cookie);
+  if (it == req.end()) {
+      return;
+  }
+
+  std::string cookies = it->value();
+  std::string key = "session_id=";
+
+  size_t start = cookies.find(key);
+  if (start == std::string::npos) {
+      return;
+  }
+
+  start += key.length();
+  size_t end = cookies.find(';', start);
+  sessionId = cookies.substr(start, end - start);
+}
+//------------------------------------------------------------------------------

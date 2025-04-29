@@ -12,16 +12,11 @@
 #include <string>
 #include "RequestMng.h"
 //------------------------------------------------------------------------------
-namespace beast = boost::beast;         // from <boost/beast.hpp>
 namespace net = boost::asio;            // from <boost/asio.hpp>
 namespace ssl = boost::asio::ssl;       // from <boost/asio/ssl.hpp>
 using tcp = boost::asio::ip::tcp;       // from <boost/asio/ip/tcp.hpp>
 //------------------------------------------------------------------------------
-beast::string_view mime_type(beast::string_view path);
-//------------------------------------------------------------------------------
 std::string path_cat(beast::string_view base, beast::string_view path);
-//------------------------------------------------------------------------------
-void fail(beast::error_code ec, char const * what);
 //------------------------------------------------------------------------------
 class session : public std::enable_shared_from_this<session>
 {
@@ -30,7 +25,7 @@ class session : public std::enable_shared_from_this<session>
   std::shared_ptr<std::string const> doc_root_;
   http::request<http::string_body> req_;
   std::shared_ptr<RequestMng> & _reqMng;
-  loggerPtr & _log;
+  loggerPtr _log;
 public:
   session(tcp::socket&& socket, ssl::context & ctx, std::shared_ptr<std::string const> const & doc_root, loggerPtr & log, std::shared_ptr<RequestMng> & reqMng);
   void run();
@@ -42,6 +37,7 @@ public:
   void on_write(bool keep_alive, beast::error_code ec, std::size_t bytes_transferred);
   void do_close();
   void on_shutdown(beast::error_code ec);
+  void reportFail(beast::error_code ec, const std::string & what);
 };
 //------------------------------------------------------------------------------
 class listener : public std::enable_shared_from_this<listener>
@@ -50,14 +46,17 @@ class listener : public std::enable_shared_from_this<listener>
   ssl::context & ctx_;
   tcp::acceptor acceptor_;
   std::shared_ptr<std::string const> doc_root_;
-  loggerPtr & _log;
+  loggerPtr _log;
   std::shared_ptr<RequestMng> _reqMng;
+  net::steady_timer _timer;
+  std::function<void(beast::error_code)> _timerHandler;
 public:
   listener(net::io_context& ioc, ssl::context& ctx, tcp::endpoint endpoint, std::shared_ptr<std::string const> const & doc_root, loggerPtr & log);
   void run();
 private:
   void do_accept();
   void on_accept(beast::error_code ec, tcp::socket socket);
+  void reportFail(beast::error_code ec, const std::string & what);
 };
 //------------------------------------------------------------------------------
 #endif // HTTPSERVER_H

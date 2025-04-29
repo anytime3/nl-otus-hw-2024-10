@@ -1,4 +1,8 @@
 #include "HttpServer.h"
+namespace
+{
+int l_sessionExpired = 30;
+}
 //------------------------------------------------------------------------------
 beast::string_view mime_type(beast::string_view path)
 {
@@ -34,45 +38,6 @@ beast::string_view mime_type(beast::string_view path)
   return "application/text";
 }
 //------------------------------------------------------------------------------
-std::string path_cat(beast::string_view base, beast::string_view path)
-{
-  if(base.empty())
-    return std::string(path);
-  std::string result(base);
-
-  char constexpr path_separator = '/';
-  if(result.back() == path_separator)
-    result.resize(result.size() - 1);
-  result.append(path.data(), path.size());
-
-  return result;
-}
-//------------------------------------------------------------------------------
-void fail(beast::error_code ec, char const * what)
-{
-  // ssl::error::stream_truncated, also known as an SSL "short read",
-  // indicates the peer closed the connection without performing the
-  // required closing handshake (for example, Google does this to
-  // improve performance). Generally this can be a security issue,
-  // but if your communication protocol is self-terminated (as
-  // it is with both HTTP and WebSocket) then you may simply
-  // ignore the lack of close_notify.
-  //
-  // https://github.com/boostorg/beast/issues/38
-  //
-  // https://security.stackexchange.com/questions/91435/how-to-handle-a-malicious-ssl-tls-shutdown
-  //
-  // When a short read would cut off the end of an HTTP message,
-  // Beast returns the error beast::http::error::partial_message.
-  // Therefore, if we see a short read here, it has occurred
-  // after the message has been completed, so it is safe to ignore it.
-
-  if(ec == net::ssl::error::stream_truncated)
-    return;
-
-  std::cerr << what << ": " << ec.message() << "\n";
-}
-//------------------------------------------------------------------------------
 session::session(tcp::socket&& socket, ssl::context & ctx, std::shared_ptr<std::string const> const & doc_root, loggerPtr & log, std::shared_ptr<RequestMng> & reqMng) :
   stream_(std::move(socket), ctx),
   doc_root_(doc_root),
@@ -102,7 +67,7 @@ void session::on_run()
 void session::on_handshake(beast::error_code ec)
 {
   if(ec)
-    return fail(ec, "handshake");
+    return reportFail(ec, "handshake");
 
   do_read();
 }
@@ -127,11 +92,14 @@ void session::on_read(beast::error_code ec, std::size_t bytes_transferred)
     return do_close();
 
   if(ec)
-    return fail(ec, "read");
-
+    return reportFail(ec, "read");
+  HttpFileResponse fileRes;
   HttpResponse res;
-  _reqMng->onGetHttpRequest(req_, res);
-  send_response(std::move(res));
+  _reqMng->onGetHttpRequest(req_, res, fileRes);
+  if (fileRes.has_content_length())
+    send_response(std::move(fileRes));
+  else
+    send_response(std::move(res));
 }
 //------------------------------------------------------------------------------
 void session::send_response(http::message_generator &&msg)
@@ -147,7 +115,7 @@ void session::on_write(bool keep_alive, beast::error_code ec, std::size_t bytes_
   boost::ignore_unused(bytes_transferred);
 
   if(ec)
-    return fail(ec, "write");
+    return reportFail(ec, "write");
 
   if(! keep_alive)
   {
@@ -172,17 +140,24 @@ void session::do_close()
 void session::on_shutdown(beast::error_code ec)
 {
   if(ec)
-    return fail(ec, "shutdown");
+    return reportFail(ec, "shutdown");
 
   // At this point the connection is closed gracefully
 }
 //------------------------------------------------------------------------------
-listener::listener(boost::asio::io_context &ioc, ssl::context &ctx, tcp::endpoint endpoint, const std::shared_ptr<const std::string> &doc_root, loggerPtr & log) :
+void session::reportFail(beast::error_code ec, const std::string & what)
+{
+  if (ec != net::ssl::error::stream_truncated)
+    _log->error(SPDLOG_FMT_STRING("{}: {}"), what, ec.message());
+}
+//------------------------------------------------------------------------------
+listener::listener(boost::asio::io_context & ioc, ssl::context & ctx, tcp::endpoint endpoint, const std::shared_ptr<const std::string> &doc_root, loggerPtr & log) :
   ioc_(ioc),
   ctx_(ctx),
   acceptor_(net::make_strand(ioc)),
   doc_root_(doc_root),
-  _log(log)
+  _log(log),
+  _timer(ioc, l_sessionExpired)
 {
   beast::error_code ec;
 
@@ -190,7 +165,7 @@ listener::listener(boost::asio::io_context &ioc, ssl::context &ctx, tcp::endpoin
   acceptor_.open(endpoint.protocol(), ec);
   if(ec)
   {
-    fail(ec, "open");
+    reportFail(ec, "open");
     return;
   }
 
@@ -198,7 +173,7 @@ listener::listener(boost::asio::io_context &ioc, ssl::context &ctx, tcp::endpoin
   acceptor_.set_option(net::socket_base::reuse_address(true), ec);
   if(ec)
   {
-    fail(ec, "set_option");
+    reportFail(ec, "set_option");
     return;
   }
 
@@ -206,7 +181,7 @@ listener::listener(boost::asio::io_context &ioc, ssl::context &ctx, tcp::endpoin
   acceptor_.bind(endpoint, ec);
   if(ec)
   {
-    fail(ec, "bind");
+    reportFail(ec, "bind");
     return;
   }
 
@@ -214,10 +189,19 @@ listener::listener(boost::asio::io_context &ioc, ssl::context &ctx, tcp::endpoin
   acceptor_.listen(net::socket_base::max_listen_connections, ec);
   if(ec)
   {
-    fail(ec, "listen");
+    reportFail(ec, "listen");
     return;
   }
-  _reqMng = std::make_shared<RequestMng>(_log);
+  _reqMng = std::make_shared<RequestMng>(doc_root_, _log);
+  _timerHandler = [&](beast::error_code ec)
+                  {
+                    if (ec.failed())
+                      return;
+                    _timer.expires_after(std::chrono::seconds(l_sessionExpired));
+                    _reqMng->clearExpiredSessions();
+                    _timer.async_wait(_timerHandler);
+                  };
+  _timer.async_wait(_timerHandler);
 }
 //------------------------------------------------------------------------------
 void listener::run()
@@ -235,13 +219,20 @@ void listener::on_accept(beast::error_code ec, tcp::socket socket)
 {
   if(ec)
   {
-    fail(ec, "accept");
+    reportFail(ec, "accept");
   }
   else
   {
+    _log->info("Openned new session");
     std::make_shared<session>(std::move(socket), ctx_, doc_root_, _log, _reqMng)->run();
   }
 
   do_accept();
+}
+//------------------------------------------------------------------------------
+void listener::reportFail(beast::error_code ec, const std::string & what)
+{
+  if (ec != net::ssl::error::stream_truncated)
+    _log->error(SPDLOG_FMT_STRING("{}: {}"), what, ec.message());
 }
 //------------------------------------------------------------------------------

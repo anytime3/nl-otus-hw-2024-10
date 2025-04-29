@@ -116,7 +116,7 @@ bool DbMng::createTable(const std::string & dbName, const std::string & tableNam
   }
 }
 //------------------------------------------------------------------------------
-bool DbMng::isExistInTable(const std::string & condition, const std::string & dbName, const std::string & tableName) const
+bool DbMng::isExistInTable(const std::string & dbName, const std::string & tableName, const std::string & condition) const
 {
   try
   {
@@ -171,6 +171,36 @@ bool DbMng::addEntry(const std::string & dbName, const std::string & tableName, 
   }
 }
 //------------------------------------------------------------------------------
+bool DbMng::deleteEntry(const std::string &dbName, const std::string &tableName, const std::string &condition) const
+{
+  try
+  {
+    std::string connStr = "host=127.0.0.1 port=5432 user=" + _user + " password=" + _password + " dbname=" + dbName;
+    pqxx::connection conn(connStr);
+
+    if (conn.is_open() == false)
+    {
+      _log->error(SPDLOG_FMT_STRING("Can not open connection to db {}"), dbName);
+      return false;
+    }
+
+    pqxx::work txn(conn);
+    std::string execStr = "DELETE FROM " + tableName + " WHERE " + condition;
+    pqxx::result res = txn.exec(execStr);
+    txn.commit();
+    conn.close();
+
+    if (res.empty())
+      return false;
+    _log->info(SPDLOG_FMT_STRING("Deleted entry from table {} in db {} where {}. Count: {}"), tableName, dbName, condition, res.size());
+    return true;
+  } catch (const std::exception & err)
+  {
+    _log->error(SPDLOG_FMT_STRING("Exception in deleteEntry! {} "), err.what());
+    return false;
+  }
+}
+//------------------------------------------------------------------------------
 bool DbMng::editEntry(const std::string & dbName, const std::string & tableName, const std::string & updateFields, const std::string & condition) const
 {
   try
@@ -197,6 +227,11 @@ bool DbMng::editEntry(const std::string & dbName, const std::string & tableName,
     _log->error(SPDLOG_FMT_STRING("Exception in editEntry! {} "), err.what());
     return false;
   }
+}
+
+void DbMng::selectFrom(const std::string &dbName, const std::string &tableName, const std::string &select, const std::string &condition) const
+{
+
 }
 //------------------------------------------------------------------------------
 
