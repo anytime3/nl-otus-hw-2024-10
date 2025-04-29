@@ -23,7 +23,7 @@ add_library(contentMng_lib STATIC src/ContentMng.cpp)
 set_target_properties(contentMng_lib PROPERTIES LINKER_LANGUAGE CXX)
 target_link_libraries(contentMng_lib PUBLIC db_lib)
 
-find_package(Boost 1.85 COMPONENTS system json REQUIRED)
+find_package(Boost COMPONENTS system json REQUIRED)
 set(Boost_USE_STATIC_LIBS ON)
 
 find_package(OpenSSL REQUIRED)
