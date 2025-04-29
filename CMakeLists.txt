@@ -53,10 +53,10 @@ add_executable(test_http_server tests/tests.cpp)
 include_directories("src/")
 target_link_libraries(test_http_server beast_server_lib GTest::GTest GTest::Main)
 
-
 install(TARGETS http_server RUNTIME DESTINATION bin)
 set(CPACK_GENERATOR DEB)
 set(CPACK_PACKAGE_VERSION_MAJOR "${PROJECT_VERSION_MAJOR}")
 set(CPACK_PACKAGE_VERSION_MINOR "${PROJECT_VERSION_MINOR}")
 set(CPACK_PACKAGE_VERSION_PATCH "${PROJECT_VERSION_PATCH}")
+set(CPACK_PACKAGE_CONTACT example@example.com)
 include(CPack)
